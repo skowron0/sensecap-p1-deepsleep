@@ -59,8 +59,3 @@ jobs:
           name: SenseCAP-P1-DeepSleep-UF2
           path: firmware.uf2
 
-      - name: Upload UF2
-        uses: actions/upload-artifact@v4
-        with:
-          name: SenseCAP-P1-DeepSleep-UF2
-          path: firmware.uf2
