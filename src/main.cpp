@@ -1,36 +1,58 @@
-
 #include <Arduino.h>
 #include <nrf.h>
 
-// SenseCAP Solar Node P1 - charger-only firmware
-// The CN3165 solar charger is a standalone hardware circuit. This firmware
-// does not configure charger-related pins; it simply puts the nRF52840 into
-// hardware SYSTEM OFF after startup.
+// SenseCAP P1 - Charger Only Firmware
+// XIAO nRF52840 + Wio-SX1262
+
+#define LORA_NSS       D4
+#define LORA_RESET     D2
+#define LORA_BUSY      D3
+#define LORA_DIO1      D1
+#define LORA_RXEN      D5
+
+static void disableLoRa()
+{
+    // Disable RF receiver path
+    pinMode(LORA_RXEN, OUTPUT);
+    digitalWrite(LORA_RXEN, LOW);
+
+    // Disable radio interrupt
+    pinMode(LORA_DIO1, INPUT);
+
+    // Deselect radio SPI
+    pinMode(LORA_NSS, OUTPUT);
+    digitalWrite(LORA_NSS, HIGH);
+
+    // Hold SX1262 in hardware reset
+    pinMode(LORA_RESET, OUTPUT);
+    digitalWrite(LORA_RESET, LOW);
+
+    // Wait for radio to enter reset
+    delay(20);
+}
 
 static void enterSystemOff()
 {
-    // Stop the Arduino loop from doing anything else and enter the nRF52840
-    // lowest-power state. SYSTEM OFF is exited by a reset-capable wake event
-    // (for example, the RESET button or a power cycle).
-    __DSB();
-    NRF_POWER->SYSTEMOFF = 1;
+    // Enter nRF52840 SYSTEM OFF
     __DSB();
 
-    // The CPU should not continue past SYSTEMOFF. Keep a fallback wait loop.
-    while (true) {
+    NRF_POWER->SYSTEMOFF = 1;
+
+    __DSB();
+
+    while (true)
+    {
         __WFE();
     }
 }
 
 void setup()
 {
-    // Do not initialize Serial, BLE, GPIOs, LEDs, SPI, I2C or the SX1262.
-    // Leaving board pins at their reset state avoids accidentally changing
-    // the external charger/power-control circuitry.
+    disableLoRa();
+
     enterSystemOff();
 }
 
 void loop()
 {
-    // Never reached.
 }
