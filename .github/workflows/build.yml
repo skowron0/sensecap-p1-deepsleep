@@ -26,8 +26,18 @@ jobs:
 
       - name: Convert HEX to UF2
         run: |
+          HEX=$(find .pio/build -name firmware.hex -print -quit)
+
+          if [ -z "$HEX" ]; then
+            echo "ERROR: firmware.hex not found!"
+            find .pio/build -type f
+            exit 1
+          fi
+
+          echo "Found firmware: $HEX"
+
           python3 uf2/utils/uf2conv.py \
-            .pio/build/seeed_xiao_nrf52840/firmware.hex \
+            "$HEX" \
             -c -f 0xADA52840 \
             -o firmware.uf2
 
