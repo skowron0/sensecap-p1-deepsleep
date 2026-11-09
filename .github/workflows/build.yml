@@ -24,22 +24,40 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/microsoft/uf2.git uf2
 
-      - name: Convert HEX to UF2
+      - name: Convert ELF to HEX
         run: |
-          HEX=$(find .pio/build -name firmware.hex -print -quit)
+          ELF=$(find .pio/build -name firmware.elf -print -quit)
 
-          if [ -z "$HEX" ]; then
-            echo "ERROR: firmware.hex not found!"
-            find .pio/build -type f
+          if [ -z "$ELF" ]; then
+            echo "ERROR: firmware.elf not found!"
             exit 1
           fi
 
-          echo "Found firmware: $HEX"
+          echo "Found ELF: $ELF"
 
+          OBJCOPY=$(find ~/.platformio/packages \
+            -path '*/bin/arm-none-eabi-objcopy' \
+            -print -quit)
+
+          if [ -z "$OBJCOPY" ]; then
+            echo "ERROR: arm-none-eabi-objcopy not found!"
+            exit 1
+          fi
+
+          "$OBJCOPY" -O ihex "$ELF" firmware.hex
+
+      - name: Convert HEX to UF2
+        run: |
           python3 uf2/utils/uf2conv.py \
-            "$HEX" \
+            firmware.hex \
             -c -f 0xADA52840 \
             -o firmware.uf2
+
+      - name: Upload UF2
+        uses: actions/upload-artifact@v4
+        with:
+          name: SenseCAP-P1-DeepSleep-UF2
+          path: firmware.uf2
 
       - name: Upload UF2
         uses: actions/upload-artifact@v4
