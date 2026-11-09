@@ -16,7 +16,7 @@ static void prepareLowPower()
     pinMode(LORA_RXEN, OUTPUT);
     digitalWrite(LORA_RXEN, LOW);
 
-    pinMode(LORA_DIO1, INPUT_NOPULL); // Brak rezystora zapobiega prądom upływu
+    pinMode(LORA_DIO1, INPUT); // Standardowe wejście bez podciągania
 
     pinMode(LORA_NSS, OUTPUT);
     digitalWrite(LORA_NSS, HIGH);
@@ -24,12 +24,11 @@ static void prepareLowPower()
     pinMode(LORA_RESET, OUTPUT);
     digitalWrite(LORA_RESET, LOW); // Trzymamy w restarcie
 
-    pinMode(LORA_BUSY, INPUT_NOPULL);
+    pinMode(LORA_BUSY, INPUT);
 
-    // 2. Wyłączenie diod LED na płytce XIAO (jeśli są sterowane programowo)
-    // Na XIAO nRF52840 diody LED są zazwyczaj aktywowane stanem LOW (ACTIVE_LOW)
+    // 2. Wyłączenie diod LED na płytce XIAO (stan HIGH dla aktywacji niskiej)
     pinMode(LED_BUILTIN, OUTPUT);
-    digitalWrite(LED_BUILTIN, HIGH); // Wyłączenie wbudowanej diody
+    digitalWrite(LED_BUILTIN, HIGH);
     
     pinMode(LED_RED, OUTPUT);
     digitalWrite(LED_RED, HIGH);
@@ -40,16 +39,10 @@ static void prepareLowPower()
     pinMode(LED_BLUE, OUTPUT);
     digitalWrite(LED_BLUE, HIGH);
 
-    // 3. Konfiguracja wszystkich pozostałych pinów cyfrowych/analogowych w stan bezpieczny (zapobiega "floating")
-    // Piny wiszące w powietrzu generują duże straty prądu. Ustawiamy je jako wejścia z pull-down lub wyjścia LOW.
-    // Uwaga: Poniższa pętla iteruje po standardowych pinofigurycjach Arduino na nrf52.
-    for (int i = 0; i <PINS_COUNT; i++) {
-        // Pomijamy piny LoRa, które już skonfigurowaliśmy
+    // 3. Konfiguracja pozostałych pinów w stan bezpieczny
+    for (int i = 0; i < PINS_COUNT; i++) {
         if (i == LORA_NSS || i == LORA_RESET || i == LORA_BUSY || i == LORA_DIO1 || i == LORA_RXEN) continue;
-        
-        // Konfiguracja niewykorzystanych pinów jako wejść z podciągnięciem do masy (PullDown)
-        // Zapobiega to oscylacjom i prądom błądzącym
-        nrf_gpio_cfg_default(i); // Reset do stanu domyślnego
+        nrf_gpio_cfg_default(i);
     }
 }
 
@@ -57,7 +50,6 @@ static void enterSystemOff()
 {
     prepareLowPower();
 
-    // Odczekaj chwilę, aby stany stabilizatorów i kondensatorów się ustabilizowały
     delay(10);
 
     // Wejście w tryb nRF52840 SYSTEM OFF
@@ -73,10 +65,7 @@ static void enterSystemOff()
 
 void setup()
 {
-    // Wyłączamy Serial USB, aby nie pobierał prądu przez konwerter
-    Serial.end();
-    USBDevice.detach();
-
+    // Usunięto niedostępne USBDevice.detach() – samo przejście w SYSTEM OFF odcina zasilanie USB/PHY
     enterSystemOff();
 }
 
