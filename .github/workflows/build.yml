@@ -24,6 +24,17 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/microsoft/uf2.git uf2
 
+          # Replace family database with a minimal valid NRF52840 database
+          cat > uf2/utils/uf2families.json << 'EOF'
+          [
+            {
+              "id": "0xADA52840",
+              "short_name": "NRF52840",
+              "description": "Nordic NRF52840"
+            }
+          ]
+          EOF
+
       - name: Convert ELF to HEX
         run: |
           ELF=$(find .pio/build -name firmware.elf -print -quit)
