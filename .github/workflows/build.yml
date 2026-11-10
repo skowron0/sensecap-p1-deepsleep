@@ -18,7 +18,7 @@ jobs:
 
       - name: Build firmware
         run: |
-          pio run -e seeed_xiao_nrf52840
+          pio run -e sensecap_p1_deepsleep
 
       - name: Download UF2 converter
         run: |
