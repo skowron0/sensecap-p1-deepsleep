@@ -1,183 +1,144 @@
 #include <Arduino.h>
 #include <nrf.h>
+#include <nrf_gpio.h>
 
 // =====================================================
 // SenseCAP Solar Node P1
 // Charger-only firmware
-// XIAO nRF52840 + SX1262 + P25Q16H
+//
+// MCU: nRF52840
+// Radio: SX1262
+// Charger: CN3165
+//
+// GPS: NOT INSTALLED
 // =====================================================
 
-// SX1262
-#define LORA_NSS       4
-#define LORA_RESET     2
-#define LORA_BUSY      3
-#define LORA_DIO1      1
-#define LORA_RXEN      5
 
-// LEDs
-#define LED_WHITE      11
-#define LED_BLUE       12
+// Arduino pin numbers from SenseCAP Solar variant
 
-// Battery divider
-#define VBAT_ENABLE    19
+#define PIN_LORA_DIO1       1
+#define PIN_LORA_RESET      2
+#define PIN_LORA_BUSY       3
+#define PIN_LORA_NSS        4
+#define PIN_LORA_RXEN       5
 
-// GPS (not installed)
-#define GPS_EN         18
+#define PIN_SPI_SCK         8
+#define PIN_SPI_MISO        9
+#define PIN_SPI_MOSI        10
 
-// External QSPI Flash P25Q16H
-#define FLASH_SCK      21
-#define FLASH_CS       22
-#define FLASH_IO0      23
-#define FLASH_IO1      24
-#define FLASH_IO2      25
-#define FLASH_IO3      26
+#define PIN_LED_WHITE       11
+#define PIN_LED_BLUE        12
+
+#define PIN_USER_BUTTON     13
+
+#define PIN_I2C_SDA         14
+#define PIN_I2C_SCL         15
+
+#define PIN_BATTERY         16
+#define PIN_VBAT_ENABLE     19
 
 
 // =====================================================
-// Send command to external SPI flash
+// Disable SX1262 radio
 // =====================================================
 
-static void flashSendByte(uint8_t value)
+static void disableRadio()
 {
-    for (int i = 7; i >= 0; i--)
-    {
-        digitalWrite(FLASH_IO0, (value >> i) & 1);
-
-        delayMicroseconds(2);
-
-        digitalWrite(FLASH_SCK, HIGH);
-
-        delayMicroseconds(2);
-
-        digitalWrite(FLASH_SCK, LOW);
-    }
-}
-
-
-// =====================================================
-// Put P25Q16H into Deep Power Down
-// Command B9h
-// =====================================================
-
-static void disableExternalFlash()
-{
-    pinMode(FLASH_CS, OUTPUT);
-    digitalWrite(FLASH_CS, HIGH);
-
-    pinMode(FLASH_SCK, OUTPUT);
-    digitalWrite(FLASH_SCK, LOW);
-
-    pinMode(FLASH_IO0, OUTPUT);
-    digitalWrite(FLASH_IO0, LOW);
-
-    delayMicroseconds(10);
-
-    // Select flash
-    digitalWrite(FLASH_CS, LOW);
-
-    // Deep Power Down command
-    flashSendByte(0xB9);
-
-    // Deselect flash
-    digitalWrite(FLASH_CS, HIGH);
-
-    delayMicroseconds(100);
-
-    // Keep QSPI lines in low-power states
-    digitalWrite(FLASH_SCK, LOW);
-    digitalWrite(FLASH_IO0, LOW);
-
-    pinMode(FLASH_IO0, INPUT_PULLDOWN);
-    pinMode(FLASH_IO1, INPUT_PULLDOWN);
-    pinMode(FLASH_IO2, INPUT_PULLDOWN);
-    pinMode(FLASH_IO3, INPUT_PULLDOWN);
-}
-
-
-// =====================================================
-// Disable SX1262
-// =====================================================
-
-static void disableLoRa()
-{
-    // Disable RF receiver switch
-    pinMode(LORA_RXEN, OUTPUT);
-    digitalWrite(LORA_RXEN, LOW);
+    // Disable external RF receiver switch
+    pinMode(PIN_LORA_RXEN, OUTPUT);
+    digitalWrite(PIN_LORA_RXEN, LOW);
 
     // Deselect radio
-    pinMode(LORA_NSS, OUTPUT);
-    digitalWrite(LORA_NSS, HIGH);
+    pinMode(PIN_LORA_NSS, OUTPUT);
+    digitalWrite(PIN_LORA_NSS, HIGH);
 
-    // Hardware reset
-    pinMode(LORA_RESET, OUTPUT);
-    digitalWrite(LORA_RESET, LOW);
+    // Hold SX1262 in hardware reset
+    pinMode(PIN_LORA_RESET, OUTPUT);
+    digitalWrite(PIN_LORA_RESET, LOW);
 
-    // Disable interrupts
-    pinMode(LORA_DIO1, INPUT_PULLDOWN);
-    pinMode(LORA_BUSY, INPUT_PULLDOWN);
+    // Prevent floating interrupt/status lines
+    pinMode(PIN_LORA_DIO1, INPUT_PULLDOWN);
+    pinMode(PIN_LORA_BUSY, INPUT_PULLDOWN);
 
-    // SPI
-    pinMode(8, OUTPUT);
-    digitalWrite(8, LOW);
-
-    pinMode(9, INPUT_PULLDOWN);
-
-    pinMode(10, OUTPUT);
-    digitalWrite(10, LOW);
+    // SPI inactive
+    pinMode(PIN_SPI_SCK, INPUT_PULLDOWN);
+    pinMode(PIN_SPI_MOSI, INPUT_PULLDOWN);
+    pinMode(PIN_SPI_MISO, INPUT_PULLDOWN);
 }
 
 
 // =====================================================
-// Disable all unnecessary peripherals
+// Disable LEDs
 // =====================================================
 
-static void disablePeripherals()
+static void disableLEDs()
 {
-    // LEDs OFF
-    pinMode(LED_WHITE, OUTPUT);
-    digitalWrite(LED_WHITE, LOW);
+    // MeshCore uses LOW to switch these LEDs off.
 
-    pinMode(LED_BLUE, OUTPUT);
-    digitalWrite(LED_BLUE, LOW);
+    pinMode(PIN_LED_WHITE, OUTPUT);
+    digitalWrite(PIN_LED_WHITE, LOW);
 
-    // Disable battery voltage divider
-    pinMode(VBAT_ENABLE, OUTPUT);
-    digitalWrite(VBAT_ENABLE, HIGH);
-
-    // GPS not installed - keep its supply disabled
-    pinMode(GPS_EN, OUTPUT);
-    digitalWrite(GPS_EN, LOW);
-
-    // Disable LoRa
-    disableLoRa();
-
-    // Disable external QSPI flash
-    disableExternalFlash();
-
-    // Disable unused Grove I2C pins
-    pinMode(14, INPUT_PULLDOWN);
-    pinMode(15, INPUT_PULLDOWN);
-
-    delay(50);
+    pinMode(PIN_LED_BLUE, OUTPUT);
+    digitalWrite(PIN_LED_BLUE, LOW);
 }
 
 
 // =====================================================
-// nRF52840 SYSTEM OFF
+// Disable battery voltage divider
+// =====================================================
+
+static void disableBatteryMeasurement()
+{
+    // According to SenseCapSolarBoard.cpp:
+    // LOW  = battery measurement enabled
+    // HIGH = battery measurement disabled
+
+    pinMode(PIN_VBAT_ENABLE, OUTPUT);
+    digitalWrite(PIN_VBAT_ENABLE, HIGH);
+}
+
+
+// =====================================================
+// Configure unused interfaces
+// =====================================================
+
+static void disableUnusedInterfaces()
+{
+    // I2C is not used.
+    // Leave lines as inputs without internal pull resistors.
+
+    pinMode(PIN_I2C_SDA, INPUT);
+    pinMode(PIN_I2C_SCL, INPUT);
+
+    // Battery ADC input
+    pinMode(PIN_BATTERY, INPUT);
+
+    // GPS is not installed.
+    // Do not configure GPS_EN or GPS_STANDBY.
+}
+
+
+// =====================================================
+// Enter nRF52840 SYSTEM OFF
 // =====================================================
 
 static void enterDeepSleep()
 {
-    // Enable internal DC/DC converter
+    // Enable internal DC/DC converter.
     NRF_POWER->DCDCEN = 1;
 
-    // Enter SYSTEM OFF
+    // Clear pending events.
+    __SEV();
+    __WFE();
+
+    // Enter SYSTEM OFF.
     __DSB();
 
     NRF_POWER->SYSTEMOFF = 1;
 
     __DSB();
 
+    // Should never execute.
     while (true)
     {
         __WFE();
@@ -185,14 +146,33 @@ static void enterDeepSleep()
 }
 
 
+// =====================================================
+// Arduino
+// =====================================================
+
 void setup()
 {
-    disablePeripherals();
+    // Allow hardware to stabilize.
+    delay(20);
 
+    // Disable all unnecessary peripherals.
+    disableLEDs();
+
+    disableBatteryMeasurement();
+
+    disableRadio();
+
+    disableUnusedInterfaces();
+
+    // Allow signals to settle.
+    delay(20);
+
+    // Sleep forever.
     enterDeepSleep();
 }
 
 
 void loop()
 {
+    // Never reached.
 }
